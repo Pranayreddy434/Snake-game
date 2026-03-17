@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐍 Snakes & Ladders</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);font-family:'Nunito',sans-serif;color:#fff;overflow-x:hidden}
+
+/* ─── START SCREEN ─────────────────────────────────────────────── */
+#startScreen{position:fixed;inset:0;background:linear-gradient(135deg,#000428,#004e92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1000;gap:14px}
+#startScreen h1{font-family:'Fredoka One',cursive;font-size:clamp(2rem,6vw,3.5rem);text-shadow:0 0 20px rgba(255,200,0,.5)}
+#startScreen select{max-width:280px;width:90vw;background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:10px;padding:9px 14px;font-size:15px;font-family:'Nunito',sans-serif}
+#startScreen select option{background:#1a1a2e;color:#fff}
+.diff-hint{font-size:12px;color:rgba(255,255,255,.5);text-align:center;max-width:280px}
+
+/* ─── GAME UI ───────────────────────────────────────────────────── */
+#gameUI{display:none;padding:6px 8px 50px}
+
+/* ─── STATUS ─────────────────────────────────────────────────────── */
+#statusBar{font-family:'Fredoka One',cursive;font-size:clamp(.95rem,2.6vw,1.35rem);background:rgba(255,255,255,.08);border-radius:12px;padding:6px 16px;display:inline-block;line-height:1.4}
+.turn-dot{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px}
+#skipMsg{min-height:22px;font-size:13px;font-weight:700;color:#ffd200;letter-spacing:.2px}
+#botBadge{display:none;font-size:13px;color:rgba(255,200,100,.85);font-style:italic;animation:blink 1s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:.4}50%{opacity:1}}
+
+/* ─── DICE CUBE ──────────────────────────────────────────────────── */
+/* Solo: dice side-by-side BELOW board  →  .dice-section-solo  */
+/* Multi: P1 dice TOP, P2 dice BOTTOM   →  #diceTop / #diceBottom */
+.dice-cube{
+  width:clamp(62px,14vw,94px);
+  height:clamp(62px,14vw,94px);
+  perspective:280px;
+  cursor:pointer;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.dice-cube.disabled{cursor:not-allowed;opacity:.32;pointer-events:none}
+.dice-inner{width:100%;height:100%;transform-style:preserve-3d;transition:transform .08s}
+.dice-cube:not(.disabled):hover .dice-inner{transform:rotateY(8deg) rotateX(-8deg)}
+.dice-cube:not(.disabled):active .dice-inner{transform:scale(.93)}
+.dice-cube.rolling .dice-inner{animation:cubeRoll .55s ease}
+@keyframes cubeRoll{
+  0%  {transform:rotateX(0) rotateY(0) rotateZ(0)}
+  20% {transform:rotateX(-80deg) rotateY(40deg) rotateZ(18deg) scale(1.14)}
+  50% {transform:rotateX(180deg) rotateY(-80deg) rotateZ(-28deg) scale(1.1)}
+  80% {transform:rotateX(270deg) rotateY(25deg) rotateZ(10deg) scale(1.04)}
+  100%{transform:rotateX(360deg) rotateY(0) rotateZ(0) scale(1)}
+}
+.dice-face{
+  width:100%;height:100%;border-radius:18%;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.dice-cube.p1-dice .dice-face{background:linear-gradient(145deg,#ff7b89,#c0392b);box-shadow:0 7px 22px rgba(255,71,87,.55),inset 0 2px 4px rgba(255,255,255,.3)}
+.dice-cube.p2-dice .dice-face{background:linear-gradient(145deg,#55aaff,#1565c0);box-shadow:0 7px 22px rgba(30,144,255,.55),inset 0 2px 4px rgba(255,255,255,.3)}
+.dice-cube.active-die.p1-dice .dice-face{box-shadow:0 0 0 4px rgba(255,100,120,.45),0 8px 28px rgba(255,71,87,.75),inset 0 2px 4px rgba(255,255,255,.3)}
+.dice-cube.active-die.p2-dice .dice-face{box-shadow:0 0 0 4px rgba(30,144,255,.45),0 8px 28px rgba(30,144,255,.75),inset 0 2px 4px rgba(255,255,255,.3)}
+.dice-svg{width:82%;height:82%}
+.pip{fill:#fff;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.dice-label{font-family:'Fredoka One',cursive;font-size:clamp(12px,2.8vw,16px)}
+.dice-val{font-family:'Fredoka One',cursive;font-size:clamp(11px,2.6vw,14px);color:rgba(255,255,255,.6);min-height:18px}
+
+/* Solo layout — two dice in a row below board */
+#diceAreaSolo{display:none;align-items:center;justify-content:center;gap:clamp(14px,4vw,40px);margin:10px 0 6px}
+.dice-panel{display:flex;flex-direction:column;align-items:center;gap:6px}
+
+/* Multi layout — one dice bar on top, one on bottom of board */
+#diceTop,#diceBottom{display:none;align-items:center;justify-content:center;gap:10px;padding:6px 0}
+.dice-bar-inner{display:flex;align-items:center;gap:10px}
+
+/* ─── BOARD ──────────────────────────────────────────────────────── */
+.board-wrap{position:relative;width:min(97vw,580px);margin:0 auto}
+#board{width:100%;aspect-ratio:1;display:grid;grid-template-columns:repeat(10,1fr);border-radius:14px;overflow:hidden;box-shadow:0 0 50px rgba(0,0,0,.7);border:2px solid rgba(255,255,255,.14);position:relative}
+.cell{border:1px solid rgba(255,255,255,.09);display:flex;align-items:center;justify-content:center;font-size:clamp(6px,1.3vw,10px);font-weight:700;position:relative;color:rgba(255,255,255,.7)}
+.cell.snake-cell{background:rgba(220,50,50,.22)!important}
+.cell.ladder-cell{background:rgba(46,200,100,.18)!important}
+/* Board themes per difficulty */
+#board.easy-board  .cell:nth-child(odd){background:rgba(100,200,100,.07)} #board.easy-board  .cell:nth-child(even){background:rgba(100,200,100,.13)} #board.easy-board{background:#0a2a0a;border-color:rgba(100,255,100,.2)}
+#board.mod-board   .cell:nth-child(odd){background:rgba(200,140,0,.06)}   #board.mod-board   .cell:nth-child(even){background:rgba(200,140,0,.12)}   #board.mod-board{background:#1a1000;border-color:rgba(255,190,0,.2)}
+#board.hard-board  .cell:nth-child(odd){background:rgba(180,30,30,.07)}   #board.hard-board  .cell:nth-child(even){background:rgba(180,30,30,.14)}   #board.hard-board{background:#200808;border-color:rgba(255,60,60,.25)}
+#canvas{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:2}
+
+/* ─── PLAYERS ────────────────────────────────────────────────────── */
+.player{position:absolute;width:64%;height:64%;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:clamp(16px,4vw,30px);z-index:20;border:3px solid rgba(255,255,255,.9);pointer-events:none;box-shadow:0 3px 16px rgba(0,0,0,.75)}
+.p1{background:radial-gradient(circle at 35% 30%,#ff8a95,#c0392b);top:3%;left:3%}
+.p2{background:radial-gradient(circle at 35% 30%,#55aaff,#1565c0);bottom:3%;right:3%}
+@keyframes snakePulse{0%,100%{box-shadow:0 0 8px 3px rgba(255,50,50,.4)}50%{box-shadow:0 0 26px 8px rgba(255,50,50,.85)}}
+@keyframes ladderPulse{0%,100%{box-shadow:0 0 8px 3px rgba(50,255,100,.4)}50%{box-shadow:0 0 26px 8px rgba(50,255,100,.85)}}
+.snakeGlow{animation:snakePulse .5s ease-in-out 4}
+.ladderGlow{animation:ladderPulse .5s ease-in-out 4}
+
+/* ─── WIN OVERLAY ────────────────────────────────────────────────── */
+#winOverlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.84);z-index:999;align-items:center;justify-content:center}
+#winOverlay.show{display:flex}
+.win-card{background:rgba(10,5,32,.97);border:2px solid rgba(255,200,0,.45);border-radius:22px;padding:32px 42px;text-align:center;display:flex;flex-direction:column;gap:14px;max-width:330px;width:90vw}
+.win-card h2{font-family:'Fredoka One',cursive;font-size:clamp(1.8rem,5vw,2.4rem);color:#ffd200;text-shadow:0 0 22px #ffd200}
+
+/* ─── SCOREBOARD ─────────────────────────────────────────────────── */
+#scoreboard{background:rgba(255,255,255,.06);border-radius:14px;padding:10px 16px;max-width:580px;margin:0 auto}
+.score-row{display:flex;gap:10px}
+.score-box{flex:1;text-align:center;background:rgba(255,255,255,.08);border-radius:10px;padding:7px}
+.score-box .sname{font-size:12px;color:rgba(255,255,255,.6)}
+.score-box .val{font-family:'Fredoka One',cursive;font-size:1.7rem}
+.p1-box .val{color:#ff7b89}.p2-box .val{color:#55aaff}
+#historyList{max-height:130px;overflow-y:auto;list-style:none;padding:0;font-size:12px}
+#historyList li{padding:3px 7px;border-radius:6px;background:rgba(255,255,255,.05);margin-bottom:3px;color:rgba(255,255,255,.75)}
+
+/* ─── MISC ───────────────────────────────────────────────────────── */
+.btn-restart{font-family:'Fredoka One',cursive;padding:8px 20px;background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:50px;cursor:pointer;transition:background .2s;font-size:13px}
+.btn-restart:hover{background:rgba(255,255,255,.19)}
+.legend{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;font-size:11px}
+.legend span{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);padding:2px 8px;border-radius:20px}
+.diff-badge{display:inline-block;padding:3px 12px;border-radius:20px;font-family:'Fredoka One',cursive;font-size:13px;margin-bottom:4px}
+.diff-easy{background:rgba(60,200,80,.25);color:#7dff99}
+.diff-mod{background:rgba(220,160,0,.25);color:#ffd84d}
+.diff-hard{background:rgba(220,50,50,.25);color:#ff8080}
+</style>
+</head>
+<body>
+
+<!-- START SCREEN -->
+<div id="startScreen">
+  <h1>🐍 Snakes &amp; Ladders</h1>
+  <p style="color:rgba(255,255,255,.6);font-size:14px">Land <b>exactly</b> on 100 to win!</p>
+  <select id="modeSelect">
+    <option value="solo">🤖 Solo vs Bot</option>
+    <option value="multi">👥 Two Players</option>
+  </select>
+  <select id="difficultySelect">
+    <option value="easy">😊 Easy — Fewer snakes, more ladders</option>
+    <option value="moderate">😤 Moderate — Balanced board</option>
+    <option value="hard">💀 Hard — Many snakes, few ladders</option>
+  </select>
+  <p class="diff-hint">Each difficulty has a unique board layout!</p>
+  <button class="btn btn-warning px-5 py-2 fw-bold"
+    style="font-family:'Fredoka One',cursive;font-size:1.2rem;border-radius:50px"
+    onclick="startGame()">🎲 Start Game</button>
+</div>
+
+<!-- WIN OVERLAY -->
+<div id="winOverlay">
+  <div class="win-card">
+    <div style="font-size:3.8rem" id="winEmoji">🏆</div>
+    <h2 id="winMsg">Player 1 Wins!</h2>
+    <p style="color:rgba(255,255,255,.5);font-size:13px">Scores updated below</p>
+    <button class="btn btn-warning fw-bold"
+      style="border-radius:50px;font-family:'Fredoka One',cursive;font-size:1rem"
+      onclick="nextRound()">▶ Next Round</button>
+    <button class="btn-restart" onclick="fullRestart()">↩ Full Restart</button>
+  </div>
+</div>
+
+<!-- GAME UI -->
+<div id="gameUI">
+
+  <div class="text-center py-2">
+    <div id="statusBar">Loading…</div>
+  </div>
+  <div class="text-center" style="min-height:24px">
+    <span id="skipMsg"></span>
+    <span id="botBadge">🤖 Bot is thinking…</span>
+  </div>
+
+  <!-- MULTI TOP DICE BAR (P1 on top) -->
+  <div id="diceTop">
+    <div class="dice-bar-inner">
+      <div class="dice-label" style="color:#ff7b89">😎 P1</div>
+      <div class="dice-cube p1-dice active-die" id="dice1" onclick="handleDiceClick(1)">
+        <div class="dice-inner"><div class="dice-face">
+          <svg class="dice-svg" id="diceSvg1" viewBox="0 0 100 100"></svg>
+        </div></div>
+      </div>
+      <div class="dice-val" id="diceVal1">Click!</div>
+      <div style="font-family:'Fredoka One',cursive;color:rgba(255,255,255,.2);font-size:1.2rem;padding:0 6px">VS</div>
+      <div class="dice-val" id="diceVal2top">Wait…</div>
+      <div class="dice-cube p2-dice disabled" id="dice2top" onclick="handleDiceClick(2)">
+        <div class="dice-inner"><div class="dice-face">
+          <svg class="dice-svg" id="diceSvg2top" viewBox="0 0 100 100"></svg>
+        </div></div>
+      </div>
+      <div class="dice-label" style="color:#55aaff">P2 🕹️</div>
+    </div>
+  </div>
+
+  <!-- BOARD -->
+  <div class="board-wrap my-2">
+    <div id="board"><canvas id="canvas"></canvas></div>
+  </div>
+
+  <!-- MULTI BOTTOM DICE BAR (P2 on bottom, mirrored) -->
+  <div id="diceBottom">
+    <div class="dice-bar-inner">
+      <div class="dice-label" style="color:#55aaff">🕹️ P2</div>
+      <div class="dice-cube p2-dice disabled" id="dice2bot" onclick="handleDiceClick(2)">
+        <div class="dice-inner"><div class="dice-face">
+          <svg class="dice-svg" id="diceSvg2bot" viewBox="0 0 100 100"></svg>
+        </div></div>
+      </div>
+      <div class="dice-val" id="diceVal2bot">Wait…</div>
+    </div>
+  </div>
+
+  <!-- SOLO DICE ROW (both dice side-by-side below board) -->
+  <div id="diceAreaSolo">
+    <div class="dice-panel">
+      <div class="dice-label" style="color:#ff7b89">😎 Player 1</div>
+      <div class="dice-cube p1-dice active-die" id="dice1s" onclick="handleDiceClick(1)">
+        <div class="dice-inner"><div class="dice-face">
+          <svg class="dice-svg" id="diceSvg1s" viewBox="0 0 100 100"></svg>
+        </div></div>
+      </div>
+      <div class="dice-val" id="diceVal1s">Click to roll</div>
+    </div>
+    <div style="font-family:'Fredoka One',cursive;font-size:1.5rem;color:rgba(255,255,255,.2);margin-bottom:24px">VS</div>
+    <div class="dice-panel">
+      <div class="dice-label" style="color:#55aaff">🤖 Bot (P2)</div>
+      <div class="dice-cube p2-dice disabled" id="dice2s">
+        <div class="dice-inner"><div class="dice-face">
+          <svg class="dice-svg" id="diceSvg2s" viewBox="0 0 100 100"></svg>
+        </div></div>
+      </div>
+      <div class="dice-val" id="diceVal2s">Waiting…</div>
+    </div>
+  </div>
+
+  <div class="text-center mt-2 mb-2">
+    <button class="btn-restart" onclick="fullRestart()">↩ Restart</button>
+  </div>
+
+  <div class="legend mb-2">
+    <span><span style="display:inline-block;width:14px;height:4px;background:#e74c3c;border-radius:2px"></span>Snake ↓</span>
+    <span><span style="display:inline-block;width:14px;height:4px;background:#f1c40f;border-radius:2px"></span>Ladder ↑</span>
+    <span><span style="background:#ff7b89;width:10px;height:10px;border-radius:50%;display:inline-block"></span> P1 😎</span>
+    <span><span style="background:#55aaff;width:10px;height:10px;border-radius:50%;display:inline-block"></span> P2 🤖</span>
+    <span>⚠️ Exact roll to win</span>
+  </div>
+
+  <div id="scoreboard" class="mb-3">
+    <div style="text-align:center;margin-bottom:6px">
+      <span class="diff-badge" id="diffBadge">Easy</span>
+    </div>
+    <div class="score-row mb-2">
+      <div class="score-box p1-box"><div class="sname">😎 Player 1</div><div class="val" id="score1">0</div></div>
+      <div class="score-box p2-box"><div class="sname">🤖 Player 2</div><div class="val" id="score2">0</div></div>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:5px">Match History</div>
+    <ul id="historyList"></ul>
+  </div>
+
+</div><!-- /gameUI -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  BOARD DEFINITIONS  — 3 unique boards per difficulty
+// ═══════════════════════════════════════════════════════════════════
+const BOARDS = {
+  easy: {
+    // 3 snakes, 6 ladders — player-friendly
+    snakes:  {17:7, 54:34, 76:58},
+    ladders: {3:22, 8:26, 20:55, 32:68, 47:79, 63:89},
+    bgClass: 'easy-board',
+    label:   '😊 Easy',
+    badgeClass: 'diff-easy'
+  },
+  moderate: {
+    // 5 snakes, 4 ladders — balanced
+    snakes:  {16:6, 48:30, 64:60, 79:19, 93:68},
+    ladders: {2:38, 7:14, 22:58, 44:91},
+    bgClass: 'mod-board',
+    label:   '😤 Moderate',
+    badgeClass: 'diff-mod'
+  },
+  hard: {
+    // 8 snakes, 3 ladders — brutal
+    snakes:  {14:4, 32:10, 45:28, 55:37, 67:49, 78:52, 88:62, 96:72},
+    ladders: {9:31, 25:57, 40:84},
+    bgClass: 'hard-board',
+    label:   '💀 Hard',
+    badgeClass: 'diff-hard'
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════
+let p1=1, p2=1, turn=1, gameOver=false, isAnimating=false;
+let score1=0, score2=0, gameMode='solo', difficulty='easy';
+let SNAKES={}, LADDERS={};
+
+// Pip positions per face value
+const PIPS = {
+  1:[[50,50]],
+  2:[[30,30],[70,70]],
+  3:[[30,30],[50,50],[70,70]],
+  4:[[30,30],[70,30],[30,70],[70,70]],
+  5:[[30,30],[70,30],[50,50],[30,70],[70,70]],
+  6:[[30,23],[70,23],[30,50],[70,50],[30,77],[70,77]]
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  DRAW DICE FACE
+// ═══════════════════════════════════════════════════════════════════
+function drawDiceFace(svgId, value){
+  const svg = document.getElementById(svgId);
+  if(!svg) return;
+  svg.querySelectorAll('circle').forEach(e=>e.remove());
+  if(!value) return;
+  PIPS[value].forEach(([cx,cy])=>{
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',cx); c.setAttribute('cy',cy);
+    c.setAttribute('r',7.5); c.setAttribute('class','pip');
+    svg.appendChild(c);
+  });
+}
+
+// Helper: set face on ALL svg elements for a given player
+function setDiceFace(player, value){
+  if(player===1){
+    drawDiceFace('diceSvg1',value);
+    drawDiceFace('diceSvg1s',value);
+  } else {
+    drawDiceFace('diceSvg2top',value);
+    drawDiceFace('diceSvg2bot',value);
+    drawDiceFace('diceSvg2s',value);
+  }
+}
+
+function setDiceVal(player, txt){
+  if(player===1){
+    document.getElementById('diceVal1').textContent  = txt;
+    document.getElementById('diceVal1s').textContent = txt;
+  } else {
+    document.getElementById('diceVal2top').textContent = txt;
+    document.getElementById('diceVal2bot').textContent = txt;
+    document.getElementById('diceVal2s').textContent   = txt;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  START / RESTART
+// ═══════════════════════════════════════════════════════════════════
+function startGame(){
+  gameMode   = document.getElementById('modeSelect').value;
+  difficulty = document.getElementById('difficultySelect').value;
+  const cfg  = BOARDS[difficulty];
+  SNAKES  = cfg.snakes;
+  LADDERS = cfg.ladders;
+
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('gameUI').style.display = 'block';
+
+  // Show dice layout based on mode
+  arrangeDice();
+
+  // Difficulty badge
+  const badge = document.getElementById('diffBadge');
+  badge.textContent  = cfg.label;
+  badge.className    = 'diff-badge ' + cfg.badgeClass;
+
+  buildBoard(cfg.bgClass);
+  setActiveDice(1);
+  updateStatus();
+}
+
+function arrangeDice(){
+  // Hide all dice areas first
+  document.getElementById('diceAreaSolo').style.display = 'none';
+  document.getElementById('diceTop').style.display      = 'none';
+  document.getElementById('diceBottom').style.display   = 'none';
+
+  if(gameMode === 'solo'){
+    document.getElementById('diceAreaSolo').style.display = 'flex';
+  } else {
+    // Multi: P1 die on top bar, P2 die on bottom bar
+    document.getElementById('diceTop').style.display    = 'flex';
+    document.getElementById('diceBottom').style.display = 'flex';
+  }
+}
+
+function setActiveDice(playerTurn){
+  // IDs for each die cube (some are shared in solo, some in multi)
+  const allP1 = ['dice1','dice1s'];
+  const allP2 = ['dice2top','dice2bot','dice2s'];
+
+  allP1.forEach(id=>{
+    const el=document.getElementById(id);
+    el.classList.remove('active-die','disabled');
+    if(playerTurn===1) el.classList.add('active-die');
+    else               el.classList.add('disabled');
+  });
+
+  allP2.forEach(id=>{
+    const el=document.getElementById(id);
+    el.classList.remove('active-die','disabled');
+    if(playerTurn===2){
+      el.classList.add('active-die');
+      // In solo mode the bot die stays visually disabled (bot auto-rolls)
+      if(gameMode==='solo') el.classList.add('disabled');
+    } else {
+      el.classList.add('disabled');
+    }
+  });
+
+  // Hint text
+  if(playerTurn===1){
+    setDiceVal(1, 'Click to roll'); setDiceVal(2, gameMode==='solo'?'Waiting…':'Wait for P1');
+  } else {
+    setDiceVal(2, gameMode==='solo'?'Bot rolling…':'Click to roll');
+    setDiceVal(1, 'Waiting…');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DICE CLICK HANDLER
+// ═══════════════════════════════════════════════════════════════════
+function handleDiceClick(clickedPlayer){
+  if(gameOver||isAnimating) return;
+  if(clickedPlayer !== turn) return;
+  if(gameMode==='solo' && turn===2) return; // bot only
+  rollDice();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  ROLL
+// ═══════════════════════════════════════════════════════════════════
+function rollDice(){
+  if(gameOver||isAnimating) return;
+  isAnimating = true;
+  clearSkip();
+  document.getElementById('botBadge').style.display = 'none';
+
+  // Animate the correct cube(s) for this player
+  const cubeIds = turn===1 ? ['dice1','dice1s'] : ['dice2top','dice2bot','dice2s'];
+  cubeIds.forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.add('rolling'); });
+
+  let ticks=0;
+  const anim=setInterval(()=>{
+    setDiceFace(turn, Math.floor(Math.random()*6)+1);
+    if(++ticks > 11){
+      clearInterval(anim);
+      cubeIds.forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.remove('rolling'); });
+      const val = Math.floor(Math.random()*6)+1;
+      setDiceFace(turn, val);
+      setDiceVal(turn, `Rolled: ${val}`);
+      processRoll(val);
+    }
+  }, 75);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  EXACT-100 WIN LOGIC
+//  Rule: player must roll EXACTLY the number needed to reach 100.
+//  If they roll more than needed → skip turn, no move.
+// ═══════════════════════════════════════════════════════════════════
+function processRoll(val){
+  const curPos = turn===1 ? p1 : p2;
+  const needed = 100 - curPos;
+  const newPos = curPos + val;
+
+  if(needed === 0){
+    // Already on 100 — shouldn't happen but safety net
+    winGame(turn); return;
+  }
+
+  if(newPos > 100){
+    // Overshot — skip, no move
+    const msg = `⚠️ P${turn} needs exactly ${needed}, rolled ${val} — turn skipped!`;
+    showSkip(msg);
+    logHistory(`⏭ Player ${turn}: needs ${needed}, got ${val} — skipped`);
+    setTimeout(()=>switchTurn(), 1500);
+    return;
+  }
+
+  if(newPos === 100){
+    // Exact hit → move then win
+    movePlayer(val, ()=>winGame(turn));
+    return;
+  }
+
+  // Normal move
+  movePlayer(val, finishMove);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  MOVEMENT
+// ═══════════════════════════════════════════════════════════════════
+function movePlayer(steps, onDone){
+  const isP1=turn===1;
+  let moved=0;
+  const iv=setInterval(()=>{
+    if(isP1) p1++; else p2++;
+    drawPlayers(); moved++;
+    if(moved===steps){ clearInterval(iv); setTimeout(onDone,300); }
+  }, 270);
+}
+
+function finishMove(){
+  const isP1=turn===1;
+  const pos=isP1?p1:p2;
+
+  if(SNAKES[pos]!==undefined){
+    highlightCell(pos,'snakeGlow');
+    logHistory(`😬 P${turn} hit 🐍 at ${pos} → ${SNAKES[pos]}`);
+    setTimeout(()=>{
+      if(isP1) p1=SNAKES[pos]; else p2=SNAKES[pos];
+      drawPlayers(); switchTurn();
+    },1400);
+  } else if(LADDERS[pos]!==undefined){
+    highlightCell(pos,'ladderGlow');
+    logHistory(`🎉 P${turn} climbed 🪜 at ${pos} → ${LADDERS[pos]}`);
+    setTimeout(()=>{
+      if(isP1) p1=LADDERS[pos]; else p2=LADDERS[pos];
+      drawPlayers(); switchTurn();
+    },1400);
+  } else {
+    switchTurn();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TURN SWITCHING & BOT
+// ═══════════════════════════════════════════════════════════════════
+function switchTurn(){
+  turn = turn===1 ? 2 : 1;
+  isAnimating = false;
+  updateStatus();
+  setActiveDice(turn);
+  if(!gameOver && gameMode==='solo' && turn===2) scheduleBotRoll();
+}
+
+function scheduleBotRoll(){
+  document.getElementById('botBadge').style.display = 'block';
+  const delay = difficulty==='hard' ? 750 : difficulty==='moderate' ? 1300 : 1900;
+  setTimeout(()=>{ if(!gameOver) rollDice(); }, delay);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  WIN
+// ═══════════════════════════════════════════════════════════════════
+function winGame(player){
+  gameOver=true;
+  document.getElementById('botBadge').style.display='none';
+  clearSkip();
+  if(player===1) score1++; else score2++;
+  document.getElementById('score1').textContent=score1;
+  document.getElementById('score2').textContent=score2;
+  logHistory(`🏆 Player ${player} wins with exact roll!`);
+  document.getElementById('winEmoji').textContent = player===1?'😎':'🤖';
+  document.getElementById('winMsg').textContent   = `Player ${player} Wins!`;
+  document.getElementById('winOverlay').classList.add('show');
+  launchConfetti();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATUS BAR
+// ═══════════════════════════════════════════════════════════════════
+function updateStatus(){
+  const bar   = document.getElementById('statusBar');
+  const col   = turn===1?'#ff7b89':'#55aaff';
+  const who   = turn===1?'😎 Player 1':'🤖 Player 2';
+  const pos   = turn===1?p1:p2;
+  const need  = 100-pos;
+  let hint;
+  if(need <= 6){
+    hint = ` — need exactly <b style="color:#ffd200">${need}</b> to win!`;
+  } else if(gameMode==='solo' && turn===2){
+    hint = ' — Bot is rolling…';
+  } else {
+    hint = ' — Click your dice!';
+  }
+  bar.innerHTML = `<span class="turn-dot" style="background:${col}"></span>${who}'s Turn${hint}`;
+}
+
+function showSkip(msg){ document.getElementById('skipMsg').textContent=msg; }
+function clearSkip()  { document.getElementById('skipMsg').textContent=''; }
+
+// ═══════════════════════════════════════════════════════════════════
+//  BOARD BUILD
+// ═══════════════════════════════════════════════════════════════════
+function buildBoard(bgClass){
+  const board=document.getElementById('board');
+  // Remove old theme classes
+  board.classList.remove('easy-board','mod-board','hard-board');
+  board.classList.add(bgClass);
+  addCells();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    resizeCanvas(); drawOverlay(); drawPlayers();
+  }));
+}
+
+function addCells(){
+  const board=document.getElementById('board');
+  const frag=document.createDocumentFragment();
+  for(let row=9;row>=0;row--){
+    let nums=[];
+    for(let i=row*10+1;i<=row*10+10;i++) nums.push(i);
+    if(row%2===1) nums.reverse();
+    nums.forEach(n=>{
+      const d=document.createElement('div');
+      d.className='cell'+(SNAKES[n]?' snake-cell':LADDERS[n]?' ladder-cell':'');
+      d.id='c'+n; d.textContent=n;
+      frag.appendChild(d);
+    });
+  }
+  board.appendChild(frag);
+}
+
+function nextRound(){
+  p1=1;p2=1;turn=1;gameOver=false;isAnimating=false;
+  document.getElementById('winOverlay').classList.remove('show');
+  document.getElementById('botBadge').style.display='none';
+  clearSkip();
+  setDiceFace(1,null); setDiceVal(1,'Click to roll');
+  setDiceFace(2,null); setDiceVal(2,'Waiting…');
+  document.querySelectorAll('.cell,.player').forEach(e=>e.remove());
+  addCells();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    resizeCanvas(); drawOverlay(); drawPlayers(); updateStatus();
+    setActiveDice(1);
+    if(gameMode==='solo'&&turn===2) scheduleBotRoll();
+  }));
+}
+
+function fullRestart(){
+  score1=0;score2=0;
+  document.getElementById('score1').textContent='0';
+  document.getElementById('score2').textContent='0';
+  document.getElementById('historyList').innerHTML='';
+  nextRound();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  CANVAS & CELL HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function resizeCanvas(){
+  const b=document.getElementById('board'),c=document.getElementById('canvas');
+  c.width=b.clientWidth; c.height=b.clientHeight;
+}
+
+function cell(n){ return document.getElementById('c'+n); }
+
+function cellCenter(n){
+  const b=document.getElementById('board').getBoundingClientRect();
+  const el=cell(n); if(!el) return{x:0,y:0};
+  const r=el.getBoundingClientRect();
+  return{x:r.left-b.left+r.width/2, y:r.top-b.top+r.height/2};
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DRAW REAL SNAKE (wavy body, head, eyes, tongue, tail)
+// ═══════════════════════════════════════════════════════════════════
+function drawSnake(ctx,from,to,cw){
+  const head=cellCenter(from), tail=cellCenter(to);
+  const dx=tail.x-head.x, dy=tail.y-head.y;
+  const len=Math.hypot(dx,dy);
+  const ux=dx/len, uy=dy/len, px=-uy, py=ux;
+
+  const segs=10, amp=cw*0.33;
+  const pts=[{x:head.x,y:head.y}];
+  for(let i=1;i<segs;i++){
+    const t=i/segs, bx=head.x+dx*t, by=head.y+dy*t;
+    const w=Math.sin(t*Math.PI*3.5)*amp*(i%2===0?1:-1);
+    pts.push({x:bx+px*w,y:by+py*w});
+  }
+  pts.push({x:tail.x,y:tail.y});
+
+  ctx.save();
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.shadowColor='rgba(0,0,0,.55)'; ctx.shadowBlur=10;
+
+  const bg=ctx.createLinearGradient(head.x,head.y,tail.x,tail.y);
+  bg.addColorStop(0,'#7b241c'); bg.addColorStop(.35,'#e74c3c');
+  bg.addColorStop(.65,'#c0392b'); bg.addColorStop(1,'#7b241c');
+
+  const path=()=>{
+    ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+    for(let i=1;i<pts.length-1;i++)
+      ctx.quadraticCurveTo(pts[i].x,pts[i].y,(pts[i].x+pts[i+1].x)/2,(pts[i].y+pts[i+1].y)/2);
+    ctx.lineTo(pts[pts.length-1].x,pts[pts.length-1].y);
+  };
+
+  path(); ctx.strokeStyle=bg; ctx.lineWidth=cw*0.30; ctx.stroke();
+  ctx.shadowBlur=0;
+  path(); ctx.strokeStyle='rgba(255,200,180,.2)'; ctx.lineWidth=cw*0.09; ctx.stroke();
+  path(); ctx.strokeStyle='rgba(60,0,0,.32)'; ctx.lineWidth=cw*0.08;
+  ctx.setLineDash([cw*.12,cw*.12]); ctx.stroke(); ctx.setLineDash([]);
+
+  // Head
+  ctx.beginPath(); ctx.arc(head.x,head.y,cw*0.22,0,Math.PI*2);
+  ctx.fillStyle='#1a7a3a'; ctx.fill();
+  ctx.strokeStyle='#0d5c2a'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Eyes
+  const eOff=cw*0.085, eR=cw*0.054;
+  [-1,1].forEach(s=>{
+    const ex=head.x+px*s*eOff-ux*eOff*.25, ey=head.y+py*s*eOff-uy*eOff*.25;
+    ctx.beginPath(); ctx.arc(ex,ey,eR,0,Math.PI*2); ctx.fillStyle='#ffe566'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ex+ux*eR*.45,ey+uy*eR*.45,eR*.5,0,Math.PI*2); ctx.fillStyle='#111'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ex-ux*eR*.3-px*s*eR*.3,ey-uy*eR*.3-py*s*eR*.3,eR*.22,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.7)'; ctx.fill();
+  });
+
+  // Tongue
+  const tBase={x:head.x+ux*cw*.18,y:head.y+uy*cw*.18};
+  const tTip ={x:head.x+ux*cw*.30,y:head.y+uy*cw*.30};
+  ctx.beginPath(); ctx.moveTo(tBase.x,tBase.y); ctx.lineTo(tTip.x,tTip.y);
+  ctx.strokeStyle='#ff3333'; ctx.lineWidth=2.2; ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tTip.x,tTip.y); ctx.lineTo(tTip.x+px*cw*.07+ux*cw*.04,tTip.y+py*cw*.07+uy*cw*.04);
+  ctx.moveTo(tTip.x,tTip.y); ctx.lineTo(tTip.x-px*cw*.07+ux*cw*.04,tTip.y-py*cw*.07+uy*cw*.04);
+  ctx.stroke();
+
+  // Tail
+  ctx.beginPath(); ctx.arc(tail.x,tail.y,cw*.06,0,Math.PI*2);
+  ctx.fillStyle='#7b241c'; ctx.fill();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  DRAW REAL LADDER (rails, rungs, caps, shine)
+// ═══════════════════════════════════════════════════════════════════
+function drawLadder(ctx,from,to,cw){
+  const bot=cellCenter(from), top=cellCenter(to);
+  const dx=top.x-bot.x, dy=top.y-bot.y;
+  const len=Math.hypot(dx,dy);
+  const ux=dx/len, uy=dy/len;
+  const hw=cw*0.125, px=-uy*hw, py=ux*hw;
+
+  ctx.save();
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=7;
+
+  const rg=ctx.createLinearGradient(bot.x,bot.y,top.x,top.y);
+  rg.addColorStop(0,'#8B6914'); rg.addColorStop(.4,'#f4d03f');
+  rg.addColorStop(.7,'#e8b90a'); rg.addColorStop(1,'#8B6914');
+
+  // Rails
+  [[bot.x-px,bot.y-py,top.x-px,top.y-py],[bot.x+px,bot.y+py,top.x+px,top.y+py]].forEach(([x1,y1,x2,y2])=>{
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2);
+    ctx.strokeStyle=rg; ctx.lineWidth=cw*.10; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x1+ux*2,y1+uy*2); ctx.lineTo(x2-ux*2,y2-uy*2);
+    ctx.strokeStyle='rgba(255,255,255,.32)'; ctx.lineWidth=cw*.026; ctx.stroke();
+  });
+
+  ctx.shadowBlur=0;
+
+  // Rungs
+  const nr=Math.max(3,Math.round(len/(cw*.72)));
+  for(let i=1;i<nr;i++){
+    const t=i/nr, rx=bot.x+dx*t, ry=bot.y+dy*t;
+    ctx.beginPath(); ctx.moveTo(rx-px*1.08,ry-py*1.08); ctx.lineTo(rx+px*1.08,ry+py*1.08);
+    ctx.strokeStyle='#d68910'; ctx.lineWidth=cw*.085; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(rx-px*.88,ry-py*.88); ctx.lineTo(rx+px*.88,ry+py*.88);
+    ctx.strokeStyle='rgba(255,255,255,.3)'; ctx.lineWidth=cw*.026; ctx.stroke();
+  }
+
+  // End caps
+  [[bot.x-px,bot.y-py],[bot.x+px,bot.y+py],[top.x-px,top.y-py],[top.x+px,top.y+py]].forEach(([ex,ey])=>{
+    ctx.beginPath(); ctx.arc(ex,ey,cw*.075,0,Math.PI*2); ctx.fillStyle='#b7770d'; ctx.fill();
+    ctx.beginPath(); ctx.arc(ex-cw*.025,ey-cw*.025,cw*.025,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,.45)'; ctx.fill();
+  });
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  OVERLAY
+// ═══════════════════════════════════════════════════════════════════
+function drawOverlay(){
+  const canvas=document.getElementById('canvas');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const cw=canvas.width/10;
+  Object.entries(SNAKES).forEach(([f,t])  => drawSnake(ctx,+f,+t,cw));
+  Object.entries(LADDERS).forEach(([f,t]) => drawLadder(ctx,+f,+t,cw));
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PLAYERS
+// ═══════════════════════════════════════════════════════════════════
+function drawPlayers(){
+  document.querySelectorAll('.player').forEach(e=>e.remove());
+  const add=(pos,cls,emoji,right)=>{
+    const el=cell(pos); if(!el) return;
+    const t=document.createElement('div');
+    t.className='player '+cls; t.textContent=emoji;
+    if(right){t.style.right='3%';t.style.left='auto';t.style.bottom='3%';t.style.top='auto';}
+    el.appendChild(t);
+  };
+  add(p1,'p1','😎',false);
+  add(p2,'p2','🤖',true);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function highlightCell(n,cls){
+  const el=cell(n); if(!el) return;
+  el.classList.add(cls);
+  setTimeout(()=>el.classList.remove(cls),2500);
+}
+
+function logHistory(msg){
+  const li=document.createElement('li'); li.textContent=msg;
+  document.getElementById('historyList').insertBefore(li,document.getElementById('historyList').firstChild);
+}
+
+function launchConfetti(){
+  for(let i=0;i<180;i++){
+    const d=document.createElement('div');
+    Object.assign(d.style,{position:'fixed',width:'8px',height:Math.random()>.5?'8px':'13px',
+      background:`hsl(${Math.random()*360}deg,100%,55%)`,
+      left:Math.random()*100+'%',top:'-14px',
+      borderRadius:Math.random()>.5?'50%':'2px',
+      transition:`top ${2+Math.random()*1.5}s ease-in`,
+      zIndex:'9999',pointerEvents:'none'});
+    document.body.appendChild(d);
+    setTimeout(()=>{d.style.top='108%';},40+i*7);
+    setTimeout(()=>d.remove(),4200);
+  }
+}
+
+window.addEventListener('resize',()=>{
+  if(document.getElementById('gameUI').style.display!=='none')
+    requestAnimationFrame(()=>{resizeCanvas();drawOverlay();});
+});
+</script>
+</body>
+</html>
